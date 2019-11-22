@@ -1,11 +1,10 @@
-
 {% if GIT_DESCRIBE_NUMBER > '0' %}
 {% set GIT_VERSION = GIT_DESCRIBE_TAG[1:] + '.post' + GIT_DESCRIBE_NUMBER %}
 {% else %}
 {% set GIT_VERSION = GIT_DESCRIBE_TAG[1:] %}
 {% endif %}
-{% set PKG_NAME = cookiecutter.project_slug %}
-{% set MODULE_NAME = cookiecutter.project_module_name %}
+{% set PKG_NAME = "m5-lvgl" %}
+{% set MODULE_NAME = "m5_lvgl" %}
 
 # source will be downloaded prior to filling in jinja templates
 # Example assumes that this folder has setup.py in it
