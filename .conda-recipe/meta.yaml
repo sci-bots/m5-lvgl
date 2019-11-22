@@ -1,0 +1,39 @@
+
+{% if GIT_DESCRIBE_NUMBER > '0' %}
+{% set GIT_VERSION = GIT_DESCRIBE_TAG[1:] + '.post' + GIT_DESCRIBE_NUMBER %}
+{% else %}
+{% set GIT_VERSION = GIT_DESCRIBE_TAG[1:] %}
+{% endif %}
+{% set PKG_NAME = cookiecutter.project_slug %}
+{% set MODULE_NAME = cookiecutter.project_module_name %}
+
+# source will be downloaded prior to filling in jinja templates
+# Example assumes that this folder has setup.py in it
+source:
+  git_url: ../
+
+package:
+  name: m5-lvgl
+  version: {{ GIT_VERSION }}
+
+build:
+  noarch: generic
+  script:
+    # Copy MicroPython library to Conda MicroPython lib directory
+    - python -c
+        "import os.path; import os; import shutil; import platformio_helpers as pioh;
+        lib_src_dir = os.path.join(os.environ['SRC_DIR'], 'micropython-src', '{{ MODULE_NAME }}');
+        install_dir = pioh.conda_bin_path().parent.joinpath('micropython-lib', '{{ MODULE_NAME }}');
+        shutil.copytree(lib_src_dir, install_dir);
+        "
+
+requirements:
+  build:
+    - platformio-helpers >=0.8
+    - python
+  run:
+    - base-node-dev >=0.16.1
+
+about:
+  home: https://github.com/sci-bots/{{ PKG_NAME }}
+  license: BSD
