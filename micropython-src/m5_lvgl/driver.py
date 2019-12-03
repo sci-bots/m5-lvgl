@@ -14,19 +14,21 @@ __all__ = ['ButtonsInputEncoder', 'EncoderInputDriver',
 
 class ButtonsInputEncoder:
     def __init__(self, left=39, right=38, press=37):
-        self.encoder_state = {'left': 0, 'right': 0, 'pressed': False}
+        self._left = 0
+        self._right = 0
+        self._pressed = False
 
         def on_press_left(*args):
-            self.encoder_state['left_time'] = utime.ticks_ms()
-            self.encoder_state['left'] += 1
+            self._left_time = utime.ticks_ms()
+            self._left += 1
 
         def on_press_right(*args):
-            self.encoder_state['right_time'] = utime.ticks_ms()
-            self.encoder_state['right'] += 1
+            self._right_time = utime.ticks_ms()
+            self._right += 1
 
         def on_toggle_press(pin):
-            self.encoder_state['press_time'] = utime.ticks_ms()
-            self.encoder_state['pressed'] = not pin.value()
+            self._press_time = utime.ticks_ms()
+            self._pressed = not pin.value()
 
         btn_left = machine.Pin(left, machine.Pin.IN, machine.Pin.PULL_UP)
         btn_left.irq(trigger=machine.Pin.IRQ_FALLING, handler=on_press_left)
@@ -38,18 +40,18 @@ class ButtonsInputEncoder:
 
     @property
     def diff_peek(self):
-        return self.encoder_state['right'] - self.encoder_state['left']
+        return self._right - self._left
 
     @property
     def diff(self):
-        diff = self.encoder_state['right'] - self.encoder_state['left']
-        self.encoder_state['left'] = 0
-        self.encoder_state['right'] = 0
+        diff = self._right - self._left
+        self._left = 0
+        self._right = 0
         return diff
 
     @property
     def pressed(self):
-        return self.encoder_state['pressed']
+        return self._pressed
 
 
 class EncoderInputDriver:
