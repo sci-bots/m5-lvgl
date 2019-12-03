@@ -1,15 +1,20 @@
 import gc
+import struct
 
 import lvgl as lv
 import lvesp32
 import machine
+import uasyncio as asyncio
 import utime
 
 from ili9341 import ili9341, COLOR_MODE_BGR, MADCTL_ML
 
 
-__all__ = ['ButtonsInputEncoder', 'EncoderInputDriver',
-           'general_event_handler', 'init_ili9341']
+DEFAULT_ENCODER_ADDR = 0x5E  # (94)
+
+
+__all__ = ['ButtonsInputEncoder', 'FacesEncoderInputEncoder',
+           'EncoderInputDriver', 'general_event_handler', 'init_ili9341']
 
 
 class ButtonsInputEncoder:
@@ -52,6 +57,51 @@ class ButtonsInputEncoder:
     @property
     def pressed(self):
         return self._pressed
+
+
+class FacesEncoderInputEncoder:
+    def __init__(self, i2c, addr=DEFAULT_ENCODER_ADDR, update_period_ms=10,
+                 loop=None):
+        self.i2c = i2c
+        self.addr = addr
+        self._buffer = bytearray(3)
+        self._diff = 0
+        self._pressed = False
+        self.update_period_ms = update_period_ms
+        self._last_updated = 0
+        self._led_settings = bytearray(4)
+        if loop is None:
+            loop = asyncio.get_event_loop()
+
+    def update(self):
+        self.i2c.readfrom_into(self.addr, self._buffer)
+        diff, not_pressed, _ = struct.unpack('bBB', bytes(self._buffer))
+        self._diff += diff
+        self._pressed = not not_pressed
+        self._last_updated = utime.ticks_ms()
+        gc.collect()
+
+    @property
+    def diff(self):
+        value = self._diff
+        self._diff = 0
+        return value
+
+    @property
+    def diff_peek(self):
+        return self._diff
+
+    @property
+    def pressed(self):
+        return self._pressed
+
+    def set_led(self, id, colour):
+        self._led_settings[0] = id
+        r, g, b = colour
+        self._led_settings[1] = r
+        self._led_settings[2] = g
+        self._led_settings[3] = b
+        self.i2c.writeto(self.addr, self._led_settings)
 
 
 class EncoderInputDriver:
