@@ -2,13 +2,15 @@ import gc
 
 import lvgl as lv
 import lvesp32
-import ILI9341 as ili
 import machine
 import utime
+
+from ili9341 import ili9341, COLOR_MODE_BGR, MADCTL_ML
 
 
 __all__ = ['ButtonsInputEncoder', 'EncoderInputDriver',
            'general_event_handler', 'init_ili9341']
+
 
 class ButtonsInputEncoder:
     def __init__(self, left=39, right=38, press=37):
@@ -107,23 +109,17 @@ def general_event_handler(obj, event):
         print("Defocused\n")
 
 
-def init_ili9341():
-    '''Configure LittlevGL to use M5Stack ILI9341.'''
-    disp = ili.display(mosi=23, miso=19, clk=18, cs=14, dc=27, rst=33,
-                       backlight=32)
-    disp.init()
-
-    # Register display driver
-    disp_buf1 = lv.disp_buf_t()
-    buf1_1 = bytearray(480*10)
-
-    lv.disp_buf_init(disp_buf1,buf1_1, None, len(buf1_1)//4)
-    disp_drv = lv.disp_drv_t()
-    lv.disp_drv_init(disp_drv)
-    disp_drv.buffer = disp_buf1
-    disp_drv.flush_cb = disp.flush
-    disp_drv.hor_res = 320
-    disp_drv.ver_res = 240
-    lv.disp_drv_register(disp_drv)
-
-    return {'disp': disp, 'disp_drv': disp_drv}
+class M5ili9341(ili9341):
+    def __init__(
+            self, mosi=23, miso=19, clk=18, cs=14, dc=27, rst=33, backlight=32,
+            backlight_on=1, hybrid=True, width=320, height=240,
+            colormode=COLOR_MODE_BGR, rot=MADCTL_ML, invert=True, **kwargs):
+        super().__init__(
+            mosi=mosi, miso=miso, clk=clk, cs=cs, dc=dc, rst=rst,
+            backlight=backlight, backlight_on=backlight_on, hybrid=hybrid,
+            width=width, height=height, colormode=colormode, rot=rot,
+            invert=False, **kwargs)
+        if invert:
+            # Invert colors (work around issue with `invert` kwarg in stock
+            # class).
+            self.send_cmd(0x21)
