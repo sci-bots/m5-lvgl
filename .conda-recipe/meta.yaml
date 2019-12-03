@@ -30,8 +30,6 @@ requirements:
   build:
     - platformio-helpers >=0.8
     - python
-  run:
-    - base-node-dev >=0.16.1
 
 about:
   home: https://github.com/sci-bots/{{ PKG_NAME }}

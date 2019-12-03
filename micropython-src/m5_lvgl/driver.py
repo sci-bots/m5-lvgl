@@ -1,30 +1,39 @@
 import gc
+import struct
 
 import lvgl as lv
 import lvesp32
-import ILI9341 as ili
 import machine
+import uasyncio as asyncio
 import utime
 
+from ili9341 import ili9341, COLOR_MODE_BGR, MADCTL_ML
 
-__all__ = ['ButtonsInputEncoder', 'EncoderInputDriver',
-           'general_event_handler', 'init_ili9341']
+
+DEFAULT_ENCODER_ADDR = 0x5E  # (94)
+
+
+__all__ = ['ButtonsInputEncoder', 'FacesEncoderInputEncoder',
+           'EncoderInputDriver', 'general_event_handler', 'init_ili9341']
+
 
 class ButtonsInputEncoder:
     def __init__(self, left=39, right=38, press=37):
-        self.encoder_state = {'left': 0, 'right': 0, 'pressed': False}
+        self._left = 0
+        self._right = 0
+        self._pressed = False
 
         def on_press_left(*args):
-            self.encoder_state['left_time'] = utime.ticks_ms()
-            self.encoder_state['left'] += 1
+            self._left_time = utime.ticks_ms()
+            self._left += 1
 
         def on_press_right(*args):
-            self.encoder_state['right_time'] = utime.ticks_ms()
-            self.encoder_state['right'] += 1
+            self._right_time = utime.ticks_ms()
+            self._right += 1
 
         def on_toggle_press(pin):
-            self.encoder_state['press_time'] = utime.ticks_ms()
-            self.encoder_state['pressed'] = not pin.value()
+            self._press_time = utime.ticks_ms()
+            self._pressed = not pin.value()
 
         btn_left = machine.Pin(left, machine.Pin.IN, machine.Pin.PULL_UP)
         btn_left.irq(trigger=machine.Pin.IRQ_FALLING, handler=on_press_left)
@@ -36,18 +45,63 @@ class ButtonsInputEncoder:
 
     @property
     def diff_peek(self):
-        return self.encoder_state['right'] - self.encoder_state['left']
+        return self._right - self._left
 
     @property
     def diff(self):
-        diff = self.encoder_state['right'] - self.encoder_state['left']
-        self.encoder_state['left'] = 0
-        self.encoder_state['right'] = 0
+        diff = self._right - self._left
+        self._left = 0
+        self._right = 0
         return diff
 
     @property
     def pressed(self):
-        return self.encoder_state['pressed']
+        return self._pressed
+
+
+class FacesEncoderInputEncoder:
+    def __init__(self, i2c, addr=DEFAULT_ENCODER_ADDR, update_period_ms=10,
+                 loop=None):
+        self.i2c = i2c
+        self.addr = addr
+        self._buffer = bytearray(3)
+        self._diff = 0
+        self._pressed = False
+        self.update_period_ms = update_period_ms
+        self._last_updated = 0
+        self._led_settings = bytearray(4)
+        if loop is None:
+            loop = asyncio.get_event_loop()
+
+    def update(self):
+        self.i2c.readfrom_into(self.addr, self._buffer)
+        diff, not_pressed, _ = struct.unpack('bBB', bytes(self._buffer))
+        self._diff += diff
+        self._pressed = not not_pressed
+        self._last_updated = utime.ticks_ms()
+        gc.collect()
+
+    @property
+    def diff(self):
+        value = self._diff
+        self._diff = 0
+        return value
+
+    @property
+    def diff_peek(self):
+        return self._diff
+
+    @property
+    def pressed(self):
+        return self._pressed
+
+    def set_led(self, id, colour):
+        self._led_settings[0] = id
+        r, g, b = colour
+        self._led_settings[1] = r
+        self._led_settings[2] = g
+        self._led_settings[3] = b
+        self.i2c.writeto(self.addr, self._led_settings)
 
 
 class EncoderInputDriver:
@@ -107,23 +161,17 @@ def general_event_handler(obj, event):
         print("Defocused\n")
 
 
-def init_ili9341():
-    '''Configure LittlevGL to use M5Stack ILI9341.'''
-    disp = ili.display(mosi=23, miso=19, clk=18, cs=14, dc=27, rst=33,
-                       backlight=32)
-    disp.init()
-
-    # Register display driver
-    disp_buf1 = lv.disp_buf_t()
-    buf1_1 = bytearray(480*10)
-
-    lv.disp_buf_init(disp_buf1,buf1_1, None, len(buf1_1)//4)
-    disp_drv = lv.disp_drv_t()
-    lv.disp_drv_init(disp_drv)
-    disp_drv.buffer = disp_buf1
-    disp_drv.flush_cb = disp.flush
-    disp_drv.hor_res = 320
-    disp_drv.ver_res = 240
-    lv.disp_drv_register(disp_drv)
-
-    return {'disp': disp, 'disp_drv': disp_drv}
+class M5ili9341(ili9341):
+    def __init__(
+            self, mosi=23, miso=19, clk=18, cs=14, dc=27, rst=33, backlight=32,
+            backlight_on=1, hybrid=True, width=320, height=240,
+            colormode=COLOR_MODE_BGR, rot=MADCTL_ML, invert=True, **kwargs):
+        super().__init__(
+            mosi=mosi, miso=miso, clk=clk, cs=cs, dc=dc, rst=rst,
+            backlight=backlight, backlight_on=backlight_on, hybrid=hybrid,
+            width=width, height=height, colormode=colormode, rot=rot,
+            invert=False, **kwargs)
+        if invert:
+            # Invert colors (work around issue with `invert` kwarg in stock
+            # class).
+            self.send_cmd(0x21)
