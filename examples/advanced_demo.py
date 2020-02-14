@@ -1,4 +1,5 @@
 import lvgl as lv
+from lvgl_helpers import children
 
 # lvgl must be initialized before any lvgl function is called or object/struct is constructed!
 
@@ -221,8 +222,9 @@ class AdvancedDemoApplication():
 
         # Initialize ILI9341 display
 
-        from ili9341 import ili9341
-        self.disp = ili9341(dc=32, cs=33, power=-1, backlight=-1)
+        from m5_lvgl import M5ili9341, ButtonsInputEncoder, EncoderInputDriver
+
+        self.disp = M5ili9341()
 
         # Register raw resistive touch driver
 
@@ -239,9 +241,12 @@ class AdvancedDemoApplication():
 
         # Register xpt2046 touch driver
 
-        from xpt2046 import xpt2046
-        self.touch = xpt2046()
-    
+        #from xpt2046 import xpt2046
+        #self.touch = xpt2046()
+
+        button_encoder = ButtonsInputEncoder()
+        self.button_driver = EncoderInputDriver(button_encoder)
+
     def init_gui(self):
         
         # Identify platform and initialize it
@@ -260,6 +265,15 @@ class AdvancedDemoApplication():
 
         self.screen_main = Screen_Main(self)
         lv.scr_load(self.screen_main)
+
+        # Get the tab view buttons and tabview contents
+        self.btns, self.content = \
+            list(children(self.screen_main.tabview))
+        
+        # Create a group
+        group = lv.group_create() 
+        lv.group_add_obj(group, self.btns) # Add the tabview buttons to the group
+        self.button_driver.group = group # Associate this group with the button encoder
 
 app = AdvancedDemoApplication()
 app.init_gui()
