@@ -7,7 +7,7 @@ import machine
 import uasyncio as asyncio
 import utime
 
-from ili9341 import ili9341, COLOR_MODE_BGR, MADCTL_ML
+import ili9341
 
 
 DEFAULT_ENCODER_ADDR = 0x5E  # (94)
@@ -161,17 +161,49 @@ def general_event_handler(obj, event):
         print("Defocused\n")
 
 
-class M5ili9341(ili9341):
-    def __init__(
-            self, mosi=23, miso=19, clk=18, cs=14, dc=27, rst=33, backlight=32,
-            backlight_on=1, hybrid=True, width=320, height=240,
-            colormode=COLOR_MODE_BGR, rot=MADCTL_ML, invert=True, **kwargs):
-        super().__init__(
-            mosi=mosi, miso=miso, clk=clk, cs=cs, dc=dc, rst=rst,
-            backlight=backlight, backlight_on=backlight_on, hybrid=hybrid,
-            width=width, height=height, colormode=colormode, rot=rot,
-            invert=False, **kwargs)
+def M5ili9341(spihost=1, mosi=23, miso=19, clk=18, cs=14, dc=27,
+              rst=33, backlight=32, mhz=25, backlight_on=1,
+              hybrid=True, width=320, height=240,
+              colormode=ili9341.ili9341.COLOR_MODE_BGR,
+              rot=ili9341.ili9341.MADCTL_ML, invert=True, init_spi=True,
+              **kwargs):
+    """
+    Factory function that chooses what class to instantiate depending on the
+    value of the `init_spi` flag. If "init_spi==True", instantiate the C module
+    display driver (which has been compiled to add the display to a
+    pre-initialized SPI bus). If "init_spi==False", instantiate the pure/hybrid
+    python display driver.
+    """
+    if init_spi:
+        # Instantiate the pure/hybrid python driver
+        display = ili9341.ili9341(mosi=mosi, miso=miso, clk=clk, cs=cs, dc=dc,
+                                  rst=rst, backlight=backlight,
+                                  backlight_on=backlight_on, hybrid=hybrid,
+                                  width=width, height=height,
+                                  colormode=colormode, rot=rot, invert=False,
+                                  **kwargs)
         if invert:
             # Invert colors (work around issue with `invert` kwarg in stock
             # class).
-            self.send_cmd(0x21)
+            display.send_cmd(0x21)
+    else:
+        import ILI9341
+
+        # Instantiate the C module driver
+        display = ILI9341.display(spihost=spihost, mosi=mosi, miso=miso, clk=clk,
+                                cs=cs, dc=dc, rst=rst, backlight=backlight,
+                                mhz=mhz)
+        display.init()
+
+        disp_buf1 = lv.disp_buf_t()
+        buf1_1 = bytearray(480*10)
+        lv.disp_buf_init(disp_buf1,buf1_1, None, len(buf1_1)//4)
+        disp_drv = lv.disp_drv_t()
+        lv.disp_drv_init(disp_drv)
+        disp_drv.buffer = disp_buf1
+        disp_drv.flush_cb = display.flush
+        disp_drv.hor_res = 320
+        disp_drv.ver_res = 240
+        disp_drv.rotated = 0
+        lv.disp_drv_register(disp_drv)
+    return display
